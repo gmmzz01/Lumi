@@ -1,0 +1,12 @@
+# Secretos
+server/.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
