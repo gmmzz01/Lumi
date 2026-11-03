@@ -194,7 +194,7 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
       webSocket.sendTXT(SESSION_UPDATE);   // configura voz/idioma/VAD
       break;
     case WStype_DISCONNECTED:
-      Serial.printf("[WS] desconectado (heap libre: %u)\n", ESP.getFreeHeap());
+      Serial.println("[WS] desconectado");
       break;
     case WStype_TEXT:
       payload[length] = 0;                 // asegurar fin de cadena
@@ -285,17 +285,15 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   while (WiFi.status() != WL_CONNECTED) { delay(300); Serial.print("."); }
-  WiFi.setSleep(false);                        // <-- clave: sin ahorro de energia (evita caidas del WS)
   Serial.print("\nWi-Fi OK. IP: ");
   Serial.println(WiFi.localIP());
-  Serial.printf("Senal Wi-Fi (RSSI): %d dBm\n", WiFi.RSSI());
 
   authHeader = String("Authorization: Bearer ") + OPENAI_API_KEY;
   webSocket.beginSSL(OPENAI_HOST, OPENAI_PORT, OPENAI_PATH);
   webSocket.setExtraHeaders(authHeader.c_str());
   webSocket.onEvent(onWsEvent);
   webSocket.setReconnectInterval(3000);
-  webSocket.enableHeartbeat(20000, 6000, 3);   // latido mas tolerante (evita cortes por lag)
+  webSocket.enableHeartbeat(15000, 3000, 2);   // mantiene viva la conexión
   Serial.println("Conectando a OpenAI (WSS)...");
 }
 
