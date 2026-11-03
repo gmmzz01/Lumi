@@ -15,6 +15,9 @@
 #include <WiFi.h>
 #include <WebSocketsClient.h>
 #include <driver/i2s_std.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
 // ================== CONFIGURACIÓN (RELLENA ESTO) ==================
 const char*    WIFI_SSID  = "TU_WIFI";          // <-- tu red Wi-Fi
@@ -44,11 +47,31 @@ const char*    RELAY_PATH = "/";
 //   12 = ~16x (puede saturar)
 #define MIC_SHIFT 14
 
+// ---------- Pantalla OLED SSD1306 (I2C) ----------
+#define OLED_SDA   8      // pin SDA de la pantalla
+#define OLED_SCL   9      // pin SCL de la pantalla
+#define OLED_ADDR  0x3C   // dirección I2C (casi siempre 0x3C; algunas 0x3D)
+#define OLED_W     128
+#define OLED_H     64
+
 // ---------- Handles I2S ----------
 static i2s_chan_handle_t rx_handle = nullptr;  // micrófono (entrada)
 static i2s_chan_handle_t tx_handle = nullptr;  // amplificador (salida)
 
 WebSocketsClient webSocket;
+
+// ---------- Pantalla / ojos ----------
+Adafruit_SSD1306 display(OLED_W, OLED_H, &Wire, -1);
+bool oledOk = false;                 // la pantalla es opcional; si falla, seguimos
+uint32_t lastDisplayMs = 0;
+
+// Geometría de los ojos
+const int EYE_W      = 34;   // ancho de cada ojo
+const int EYE_H_MAX  = 42;   // alto máximo (ojo bien abierto)
+const int EYE_RADIUS = 10;   // redondeo de esquinas
+const int LEFT_CX    = 40;   // centro X del ojo izquierdo
+const int RIGHT_CX   = 88;   // centro X del ojo derecho
+const int EYE_CY     = 32;   // centro Y de ambos ojos
 
 // ---------- Half-duplex (evita que el mic capte al altavoz) ----------
 // Mientras suena la respuesta, NO enviamos audio del micrófono.
@@ -165,6 +188,77 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
 }
 
 // =============================================================
+//  Pantalla OLED: ojos animados
+// =============================================================
+void setupDisplay() {
+  Wire.begin(OLED_SDA, OLED_SCL);
+  Wire.setClock(400000);
+  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
+    Serial.println("[OLED] no encontrada (revisa cableado/dirección). Continuo sin pantalla.");
+    oledOk = false;
+    return;
+  }
+  oledOk = true;
+  randomSeed(micros());
+  display.clearDisplay();
+  display.display();
+  Serial.println("[OLED] lista");
+}
+
+// Dibuja un ojo (rectángulo redondeado) centrado en (cx, cy) con altura h.
+void drawEye(int cx, int cy, int h) {
+  if (h < 4) h = 4;
+  int r = min(EYE_RADIUS, h / 2);
+  display.fillRoundRect(cx - EYE_W / 2, cy - h / 2, EYE_W, h, r, SSD1306_WHITE);
+}
+
+// Anima los ojos: parpadeo en reposo y "vibración" mientras Lumi habla.
+void loopDisplay() {
+  if (!oledOk) return;
+
+  uint32_t now = millis();
+  if (now - lastDisplayMs < 40) return;   // ~25 FPS (no satura el I2C)
+  lastDisplayMs = now;
+
+  bool talking = (now - lastPlaybackMs) < PLAYBACK_TAIL_MS;
+
+  // --- parpadeo cada 2.5-5 s ---
+  static uint32_t nextBlinkAt = 3000;
+  static uint32_t blinkStart  = 0;
+  static bool     blinking    = false;
+  if (!blinking && now > nextBlinkAt) { blinking = true; blinkStart = now; }
+  if (blinking && now - blinkStart > 140) {
+    blinking = false;
+    nextBlinkAt = now + random(2500, 5000);
+  }
+
+  // Altura base de los ojos
+  int base = talking ? (EYE_H_MAX - 12) : EYE_H_MAX;
+  int hL = base, hR = base;
+
+  if (talking) {
+    // Pulso rápido: los ojos "laten" al ritmo de la voz
+    float t     = (now % 360) / 360.0f * TWO_PI;
+    int   pulse = (int)(sin(t) * 9);
+    hL = base + pulse;
+    hR = base + pulse;
+  }
+
+  if (blinking) {
+    // Cierra y abre: alto al inicio/fin, casi cerrado en el medio
+    float p = (now - blinkStart) / 140.0f;   // 0..1
+    float f = fabs(2.0f * p - 1.0f);          // 1 → 0 → 1
+    hL = max(4, (int)(base * f));
+    hR = hL;
+  }
+
+  display.clearDisplay();
+  drawEye(LEFT_CX,  EYE_CY, hL);
+  drawEye(RIGHT_CX, EYE_CY, hR);
+  display.display();
+}
+
+// =============================================================
 //  setup / loop
 // =============================================================
 void setup() {
@@ -172,6 +266,7 @@ void setup() {
   delay(300);
   Serial.println("\n=== Lumi - ESP32-S3 ===");
 
+  setupDisplay();
   setupMic();
   setupAmp();
 
@@ -194,4 +289,5 @@ void setup() {
 void loop() {
   webSocket.loop();   // mantiene viva la conexión y procesa audio entrante
   loopMic();          // captura y envía audio del micrófono
+  loopDisplay();      // anima los ojos en la pantalla OLED
 }

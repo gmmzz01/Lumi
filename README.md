@@ -39,8 +39,24 @@ MAX98357A ◄─I2S── ESP32-S3 ◄──WebSocket(audio)──────�
 | GND  | GND |
 | +/−  | altavoz (4–8 Ω) |
 
+| OLED SSD1306 128x64 (I2C) | ESP32-S3 |
+|---|---|
+| SDA | GPIO 8 |
+| SCL | GPIO 9 |
+| VCC | 3V3 |
+| GND | GND |
+
 > El micrófono y el amplificador van en buses I2S separados (el S3 tiene dos),
-> así pueden funcionar a la vez.
+> así pueden funcionar a la vez. La pantalla es **opcional**: si no está
+> conectada, el firmware lo detecta y sigue funcionando sin ella.
+> Dirección I2C por defecto `0x3C` (si la tuya es `0x3D`, cámbiala en
+> `OLED_ADDR` dentro de `main.cpp`).
+
+### Ojos animados
+
+En la pantalla OLED aparecen dos ojos que **parpadean** en reposo y **vibran al
+ritmo de la voz** mientras Lumi habla. No hay que configurar nada: se activan
+solos si la pantalla está conectada.
 
 ---
 
